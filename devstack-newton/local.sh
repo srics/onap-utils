@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+# Sample ``local.sh`` for user-configurable tasks to run automatically
+# at the successful conclusion of ``stack.sh``.
+
+# NOTE: Copy this file to the root DevStack directory for it to work properly.
+
+# This is a collection of some of the things we have found to be useful to run
+# after ``stack.sh`` to tweak the OpenStack configuration that DevStack produces.
+# These should be considered as samples and are unsupported DevStack code.
+
+
+# Keep track of the DevStack directory
+TOP_DIR=$(cd $(dirname "$0") && pwd)
+
+# Import common functions
+source $TOP_DIR/functions
+
+# Use openrc + stackrc + localrc for settings
+source $TOP_DIR/stackrc
+
+# Destination path for installation ``DEST``
+DEST=${DEST:-/opt/stack}
+
+# Get OpenStack admin auth
+source $TOP_DIR/openrc admin admin
+
+# Upload Ubuntu images
+openstack image create --public --file ~/images/xenial-server-cloudimg-amd64-disk1.img ubuntu_16_04
+openstack image create --public --file ~/images/trusty-server-cloudimg-amd64-disk1.img ubuntu_14_04
+
+# Create ONAP project
+openstack project create onap
+
+# Update ONAP project quota
+openstack quota set --instances 96 --cores 192 --ram 204800 --ports 96 --gigabytes 2000 onap
+
+# Create ONAP user
+openstack user create --project onap --password devstack onap_user
+
+# Make ONAP user an admin
+openstack role add --user onap_user --project onap admin
+
+# Switch to onap_user / onap project
+source $TOP_DIR/openrc onap_user onap
+
+# Create Sec Group that allows required ports
+openstack security group delete sg_onap 2> /dev/null
+openstack security group create sg_onap --description 'Allow icmp,ssh,http,https,8989'  
+openstack security group rule create sg_onap --protocol icmp
+openstack security group rule create sg_onap --protocol tcp --dst-port 22
+openstack security group rule create sg_onap --protocol tcp --dst-port 80
+openstack security group rule create sg_onap --protocol tcp --dst-port 443
+openstack security group rule create sg_onap --protocol tcp --dst-port 8989
+
+# Create ssh key and use it in onap_openstack.env and here ...
+openstack keypair create --public-key ~/onap/ssh-keys/onap_rsa.pub onap-rsa-pubkey
+
+# Create provider networks for uplink
+openstack network create --provider-network-type flat --provider-physical-network mgmtphysnet0 --share --external net_mgmt
+openstack subnet create --ip-version 4 --subnet-range 192.168.120.0/24 --gateway 192.168.120.1 --network net_mgmt subnet_mgmt
