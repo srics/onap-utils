@@ -44,6 +44,21 @@ openstack role add --user onap_user --project onap admin
 # Switch to onap_user / onap project
 source $TOP_DIR/openrc onap_user onap
 
+# Get default onap security group id
+eval `openstack project show onap -f shell`
+onap_project_id=$id
+echo "onap project id is ", $id
+
+onap_default_secgrp_id=`openstack security group list -f csv | grep default| grep $onap_project_id | cut -d',' -f1 | tr -d '"'`
+echo "Default onap secgrp id is ", $onap_default_secgrp_id
+
+openstack security group rule create $onap_default_secgrp_id --protocol icmp
+openstack security group rule create $onap_default_secgrp_id --protocol tcp --dst-port 22
+openstack security group rule create $onap_default_secgrp_id --protocol tcp --dst-port 80
+openstack security group rule create $onap_default_secgrp_id --protocol tcp --dst-port 443
+openstack security group rule create $onap_default_secgrp_id --protocol tcp --dst-port 8989
+
+echo "Done update onap default secgroup rules"
 # Create Sec Group that allows required ports
 openstack security group delete sg_onap 2> /dev/null
 openstack security group create sg_onap --description 'Allow icmp,ssh,http,https,8989'  
